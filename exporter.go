@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/digitalocean/ceph_exporter/collectors"
+	"github.com/tinytub/ceph_exporter/collectors"
 
 	"github.com/ceph/go-ceph/rados"
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,16 +43,28 @@ var _ prometheus.Collector = &CephExporter{}
 // NewCephExporter creates an instance to CephExporter and returns a reference
 // to it. We can choose to enable a collector to extract stats out of by adding
 // it to the list of collectors.
-func NewCephExporter(conn *rados.Conn) *CephExporter {
-	return &CephExporter{
-		collectors: []prometheus.Collector{
-			collectors.NewClusterUsageCollector(conn),
-			collectors.NewPoolUsageCollector(conn),
-			collectors.NewClusterHealthCollector(conn),
-			collectors.NewMonitorCollector(conn),
-			collectors.NewOSDCollector(conn),
-		},
+func NewCephExporter(conn *rados.Conn, hostType string) *CephExporter {
+	var exporter *CephExporter
+	switch hostType {
+	case "ceph":
+		exporter = &CephExporter{
+			collectors: []prometheus.Collector{
+				collectors.NewClusterUsageCollector(conn),
+				collectors.NewPoolUsageCollector(conn),
+				collectors.NewClusterHealthCollector(conn),
+				collectors.NewMonitorCollector(conn),
+				collectors.NewOSDCollector(conn),
+			},
+		}
+	case "openstack":
+		exporter = &CephExporter{
+
+			collectors: []prometheus.Collector{
+				collectors.NewClientSocketUsageCollector(conn),
+			},
+		}
 	}
+	return exporter
 }
 
 // Describe sends all the descriptors of the collectors included to
@@ -81,11 +93,11 @@ func main() {
 		metricsPath = flag.String("telemetry.path", "/metrics", "URL path for surfacing collected metrics")
 
 		cephConfig = flag.String("ceph.config", "", "path to ceph config file")
-		cephUser   = flag.String("ceph.user", "admin", "Ceph user to connect to cluster.")
+		hostType   = flag.String("host.type", "ceph", "host type: openstack or ceph")
 	)
 	flag.Parse()
 
-	conn, err := rados.NewConnWithUser(*cephUser)
+	conn, err := rados.NewConn()
 	if err != nil {
 		log.Fatalf("cannot create new ceph connection: %s", err)
 	}
@@ -104,21 +116,17 @@ func main() {
 	}
 	defer conn.Shutdown()
 
-	prometheus.MustRegister(NewCephExporter(conn))
+	prometheus.MustRegister(NewCephExporter(conn, *hostType))
 
 	http.Handle(*metricsPath, prometheus.Handler())
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html>
-			<head><title>Ceph Exporter</title></head>
-			<body>
-			<h1>Ceph Exporter</h1>
-			<p><a href='` + *metricsPath + `'>Metrics</a></p>
-			</body>
-			</html>`))
+		http.Redirect(w, r, *metricsPath, http.StatusMovedPermanently)
 	})
 
 	log.Printf("Starting ceph exporter on %q", *addr)
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		log.Fatalf("cannot start ceph exporter: %s", err)
 	}
+
 }
