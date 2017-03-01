@@ -65,8 +65,6 @@ var findSockets = func(c *Ceph) ([]*socket, error) {
 		}
 		if sockType == typeOsd || sockType == typeMon || (sockType == typeClient && strings.Split(f, ".")[1] != "admin") {
 			path := filepath.Join(c.SocketDir, f)
-			//fmt.Println(path)
-			//fmt.Println(parseSockId(f, sockPrefix, c.SocketSuffix))
 			sockets = append(sockets, &socket{parseSockId(f, sockPrefix, c.SocketSuffix), sockType, path})
 		}
 	}
@@ -126,8 +124,6 @@ func parseDump(dump string) (taggedMetricMap, error) {
 func newTaggedMetricMap(data map[string]interface{}) taggedMetricMap {
 	tmm := make(taggedMetricMap)
 	for tag, datapoints := range data {
-		//fmt.Println("####################################################\n\n")
-		//fmt.Println("tag: ", tag, "datapoints: ", datapoints)
 		mm := make(metricMap)
 		for _, m := range flatten(datapoints) {
 			mm[m.name()] = m.value
@@ -174,17 +170,14 @@ type socket struct {
 
 func getInstanceID(s *socket) string {
 	pid := strings.Split(s.sockId, ".")[1]
-	//fmt.Println("PID:", pid)
 
 	cmdline := fmt.Sprintf("/proc/%s/cmdline", pid)
-	//fmt.Println(cmdline)
 
 	content, err := ioutil.ReadFile(cmdline)
 	if err != nil {
 		//Do something
 	}
-
-	//      uuid = cmd.read().split(',')[45].split('=')[1].split('\x00')[0]
+	//Todo use trim
 	rawid := strings.Split(string(content), "-")[3]
 	id := strings.Split(rawid, "\x00")[0]
 	return id
@@ -214,60 +207,6 @@ func (c *Ceph) getNameByInstanceID(instId string) (string, error) {
 	return v.NameInstanceMetadata, nil
 }
 
-/*
-func (c *Ceph) Test() {
-	sockets, err := findSockets(c)
-	if err != nil {
-		fmt.Println("socket err: ", sockets, err)
-	}
-	//fmt.Println("####################################################\n\n")
-
-	//fmt.Println(sockets)
-	for _, s := range sockets {
-		instId := getInstanceID(s)
-		//fmt.Println(instId)
-		name, _ := c.getNameByInstanceID(instId)
-		//fmt.Println(name)
-		dump, err := perfDump(c.CephBinary, s)
-		if err != nil {
-			log.Printf("E! error reading from socket '%s': %v", s.socket, err)
-			continue
-		}
-		//
-
-		//data, err := parseDump(dump)
-		data, _ := parseDump(dump)
-		d := make(map[string]taggedMetricMap)
-		d[name] = data
-		fmt.Println(d)
-		if err != nil {
-			log.Printf("E! error parsing dump from socket '%s': %v", s.socket, err)
-			continue
-		}
-
-	}
-}
-*/
-
-/*
-func main() {
-	c := Ceph{
-		CephBinary:             "/usr/bin/ceph",
-		OsdPrefix:              osdPrefix,
-		MonPrefix:              monPrefix,
-		ClientPrefix:           clientPrefix,
-		SocketDir:              "/var/run/ceph/guests",
-		SocketSuffix:           sockSuffix,
-		CephUser:               "client.admin",
-		CephConfig:             "/etc/ceph/ceph.conf",
-		LibvirtPrefix:          "/etc/libvirt/qemu/",
-		GatherAdminSocketStats: true,
-		GatherClusterStats:     false,
-	}
-	c.Test()
-}
-*/
-
 type Domain struct {
 	NameInstanceMetadata string `xml:"metadata>instance>name"`
 }
@@ -286,42 +225,9 @@ type ClientSocketUsageCollector struct {
 	TotalReadBytes      *prometheus.GaugeVec
 	TotalWriteBytes     *prometheus.GaugeVec
 	TotalReadWriteBytes *prometheus.GaugeVec
-	/*
-		// UsedBytes tracks the amount of bytes currently allocated for the pool. This
-		// does not factor in the overcommitment made for individual images.
-		UsedBytes *prometheus.GaugeVec
-
-		// RawUsedBytes tracks the amount of raw bytes currently used for the pool. This
-		// factors in the replication factor (size) of the pool.
-		RawUsedBytes *prometheus.GaugeVec
-
-		// MaxAvail tracks the amount of bytes currently free for the pool,
-		// which depends on the replication settings for the pool in question.
-		MaxAvail *prometheus.GaugeVec
-
-		// Objects shows the no. of RADOS objects created within the pool.
-		Objects *prometheus.GaugeVec
-
-		// DirtyObjects shows the no. of RADOS dirty objects in a cache-tier pool,
-		// this doesn't make sense in a regular pool, see:
-		// http://lists.ceph.com/pipermail/ceph-users-ceph.com/2015-April/000557.html
-		DirtyObjects *prometheus.GaugeVec
-
-		// ReadIO tracks the read IO calls made for the images within each pool.
-		ReadIO *prometheus.GaugeVec
-
-		// Readbytes tracks the read throughput made for the images within each pool.
-		ReadBytes *prometheus.GaugeVec
-
-		// WriteIO tracks the write IO calls made for the images within each pool.
-		WriteIO *prometheus.GaugeVec
-
-		// WriteBytes tracks the write throughput made for the images within each pool.
-		WriteBytes *prometheus.GaugeVec
-	*/
 }
 
-// NewPoolUsageCollector creates a new instance of PoolUsageCollector and returns
+// NewClientSocketUsageCollector creates a new instance of ClientSocketUsageCollector and returns
 // its reference.
 func NewClientSocketUsageCollector(conn Conn) *ClientSocketUsageCollector {
 	var (
@@ -385,79 +291,6 @@ func NewClientSocketUsageCollector(conn Conn) *ClientSocketUsageCollector {
 			},
 			[]string{"kvm"},
 		),
-		/*
-			RawUsedBytes: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "raw_used_bytes",
-					Help:      "Raw capacity of the pool that is currently under use, this factors in the size",
-				},
-				poolLabel,
-			),
-			MaxAvail: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "available_bytes",
-					Help:      "Free space for this ceph pool",
-				},
-				poolLabel,
-			),
-			Objects: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "objects_total",
-					Help:      "Total no. of objects allocated within the pool",
-				},
-				poolLabel,
-			),
-			DirtyObjects: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "dirty_objects_total",
-					Help:      "Total no. of dirty objects in a cache-tier pool",
-				},
-				poolLabel,
-			),
-			ReadIO: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "read_total",
-					Help:      "Total read i/o calls for the pool",
-				},
-				poolLabel,
-			),
-			ReadBytes: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "read_bytes_total",
-					Help:      "Total read throughput for the pool",
-				},
-				poolLabel,
-			),
-			WriteIO: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "write_total",
-					Help:      "Total write i/o calls for the pool",
-				},
-				poolLabel,
-			),
-			WriteBytes: prometheus.NewGaugeVec(
-				prometheus.GaugeOpts{
-					Namespace: cephNamespace,
-					Subsystem: subSystem,
-					Name:      "write_bytes_total",
-					Help:      "Total write throughput for the pool",
-				},
-				poolLabel,
-			),*/
 	}
 }
 
@@ -469,16 +302,6 @@ func (p *ClientSocketUsageCollector) collectorList() []prometheus.Collector {
 		p.TotalReadBytes,
 		p.TotalWriteBytes,
 		p.TotalReadWriteBytes,
-		/*
-			p.RawUsedBytes,
-			p.MaxAvail,
-			p.Objects,
-			p.DirtyObjects,
-			p.ReadIO,
-			p.ReadBytes,
-			p.WriteIO,
-			p.WriteBytes,
-		*/
 	}
 }
 
@@ -518,30 +341,20 @@ func (p *ClientSocketUsageCollector) collect() error {
 		data, _ := parseDump(dump)
 
 		for tag, metric := range data {
-			//	fmt.Println(tag)
-			//prefix := strings.Split(tag, "_")[0]
-			//fmt.Println(prefix)
-			//vType := strings.TrimPrefix(tag, prefix)
+
 			parseTag := strings.Split(tag, "-")
-			//parseType := strings.Split(tag, "_")
 			if parseTag[0] == "librbd" {
 				mLabel := fmt.Sprintf("%s-mount-%s-%s", name, parseTag[2], parseTag[7])
 
 				p.ReadBytes.WithLabelValues(mLabel).Set(metric["rd_bytes"].(float64))
-				//read_total += metric["rd_bytes"].(float64)
 				totalvals[name+"-read"] += metric["rd_bytes"].(float64)
 
 				p.WriteBytes.WithLabelValues(mLabel).Set(metric["wr_bytes"].(float64))
-				//write_total += metric["wr_bytes"].(float64)
 				totalvals[name+"-write"] += metric["wr_bytes"].(float64)
-				//		p.TotalBytes.WithLabelValues(mLabel).Set(metric["wr_bytes"].(float64) + metric["rd_bytes"].(float64))
-				//		io_total += read_total + write_total
 				p.ReadWriteBytes.WithLabelValues(mLabel).Set(metric["rd_bytes"].(float64) + metric["wr_bytes"].(float64))
-				//readwrite_total += metric["rd_bytes"].(float64) + metric["wr_bytes"].(float64)
 				totalvals[name+"-readwrite"] += metric["rd_bytes"].(float64) + metric["wr_bytes"].(float64)
 
 			}
-			//fmt.Println(metrics)
 		}
 		mLabel := fmt.Sprintf("%s-all", name)
 		p.TotalReadBytes.WithLabelValues(mLabel).Set(totalvals[name+"-read"])
@@ -551,42 +364,13 @@ func (p *ClientSocketUsageCollector) collect() error {
 			log.Printf("E! error parsing dump from socket '%s': %v", s.socket, err)
 			continue
 		}
-	} /*
-		cmd := p.cephUsageCommand()
-		buf, _, err := p.conn.MonCommand(cmd)
-		if err != nil {
-			return err
-		}
-
-		stats := &cephPoolStats{}
-		if err := json.Unmarshal(buf, stats); err != nil {
-			return err
-		}
-
-		if len(stats.Pools) < 1 {
-			return errors.New("no pools found in the cluster to report stats on")
-		}
-	*/
-
-	/*
-		for _, pool := range stats.Pools {
-			p.UsedBytes.WithLabelValues(pool.Name).Set(pool.Stats.BytesUsed)
-			p.RawUsedBytes.WithLabelValues(pool.Name).Set(pool.Stats.RawBytesUsed)
-			p.MaxAvail.WithLabelValues(pool.Name).Set(pool.Stats.MaxAvail)
-			p.Objects.WithLabelValues(pool.Name).Set(pool.Stats.Objects)
-			p.DirtyObjects.WithLabelValues(pool.Name).Set(pool.Stats.DirtyObjects)
-			p.ReadIO.WithLabelValues(pool.Name).Set(pool.Stats.ReadIO)
-			p.ReadBytes.WithLabelValues(pool.Name).Set(pool.Stats.ReadBytes)
-			p.WriteIO.WithLabelValues(pool.Name).Set(pool.Stats.WriteIO)
-			p.WriteBytes.WithLabelValues(pool.Name).Set(pool.Stats.WriteBytes)
-		}
-	*/
+	}
 
 	return nil
 }
 
 // Describe fulfills the prometheus.Collector's interface and sends the descriptors
-// of pool's metrics to the given channel.
+// of client socket's metrics to the given channel.
 func (p *ClientSocketUsageCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, metric := range p.collectorList() {
 		metric.Describe(ch)
