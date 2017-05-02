@@ -89,34 +89,68 @@ func (c *CephExporter) Collect(ch chan<- prometheus.Metric) {
 
 func main() {
 	var (
-		addr        = flag.String("telemetry.addr", ":9128", "host:port for ceph exporter")
-		metricsPath = flag.String("telemetry.path", "/metrics", "URL path for surfacing collected metrics")
-
-		cephConfig = flag.String("ceph.config", "", "path to ceph config file")
-		hostType   = flag.String("host.type", "ceph", "host type: openstack or ceph")
+		addr           = flag.String("telemetry.addr", ":9128", "host:port for ceph exporter")
+		metricsPath    = flag.String("telemetry.path", "/metrics", "URL path for surfacing collected metrics")
+		cephConfig     = flag.String("ceph.config", "", "path to ceph config file")
+		cephUser       = flag.String("ceph.user", "admin", "Ceph user to connect to cluster.")
+		hostType       = flag.String("host.type", "ceph", "host type: openstack or ceph")
+		exporterConfig = flag.String("exporter.config", "/etc/ceph/exporter.yml", "Path to ceph exporter config.")
 	)
 	flag.Parse()
 
-	conn, err := rados.NewConn()
-	if err != nil {
-		log.Fatalf("cannot create new ceph connection: %s", err)
-	}
+	if fileExists(*exporterConfig) {
 
-	if *cephConfig != "" {
-		err = conn.ReadConfigFile(*cephConfig)
+		cfg, err := ParseConfig(*exporterConfig)
+		if err != nil {
+			log.Fatalf("Error: %v", err)
+		}
+
+		for _, cluster := range cfg.Cluster {
+
+			conn, err := rados.NewConnWithUser(cluster.User)
+			if err != nil {
+				log.Fatalf("cannot create new ceph connection: %s", err)
+			}
+
+			err = conn.ReadConfigFile(cluster.ConfigFile)
+			if err != nil {
+				log.Fatalf("cannot read ceph config file: %s", err)
+			}
+
+			if err := conn.Connect(); err != nil {
+				log.Fatalf("cannot connect to ceph cluster: %s", err)
+			}
+			// defer Shutdown to program exit
+			defer conn.Shutdown()
+
+			log.Printf("Starting ceph exporter for cluster: %s", cluster.ClusterLabel)
+			err = prometheus.Register(NewCephExporter(conn, cluster.ClusterLabel))
+			if err != nil {
+				log.Fatalf("cannot export cluster: %s error: %v", cluster.ClusterLabel, err)
+			}
+		}
 	} else {
-		err = conn.ReadDefaultConfigFile()
-	}
-	if err != nil {
-		log.Fatalf("cannot read ceph config file: %s", err)
-	}
+		conn, err := rados.NewConnWithUser(*cephUser)
+		if err != nil {
+			log.Fatalf("cannot create new ceph connection: %s", err)
+		}
 
-	if err := conn.Connect(); err != nil {
-		log.Fatalf("cannot connect to ceph cluster: %s", err)
-	}
-	defer conn.Shutdown()
+		if *cephConfig != "" {
+			err = conn.ReadConfigFile(*cephConfig)
+		} else {
+			err = conn.ReadDefaultConfigFile()
+		}
+		if err != nil {
+			log.Fatalf("cannot read ceph config file: %s", err)
+		}
 
-	prometheus.MustRegister(NewCephExporter(conn, *hostType))
+		if err := conn.Connect(); err != nil {
+			log.Fatalf("cannot connect to ceph cluster: %s", err)
+		}
+		defer conn.Shutdown()
+
+		prometheus.MustRegister(NewCephExporter(conn, "ceph"))
+	}
 
 	http.Handle(*metricsPath, prometheus.Handler())
 
