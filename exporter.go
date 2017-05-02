@@ -49,11 +49,11 @@ func NewCephExporter(conn *rados.Conn, hostType string) *CephExporter {
 	case "ceph":
 		exporter = &CephExporter{
 			collectors: []prometheus.Collector{
-				collectors.NewClusterUsageCollector(conn),
-				collectors.NewPoolUsageCollector(conn),
-				collectors.NewClusterHealthCollector(conn),
-				collectors.NewMonitorCollector(conn),
-				collectors.NewOSDCollector(conn),
+				collectors.NewClusterUsageCollector(conn, cluster),
+				collectors.NewPoolUsageCollector(conn, cluster),
+				collectors.NewClusterHealthCollector(conn, cluster),
+				collectors.NewMonitorCollector(conn, cluster),
+				collectors.NewOSDCollector(conn, cluster),
 			},
 		}
 	case "openstack":
