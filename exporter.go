@@ -43,7 +43,7 @@ var _ prometheus.Collector = &CephExporter{}
 // NewCephExporter creates an instance to CephExporter and returns a reference
 // to it. We can choose to enable a collector to extract stats out of by adding
 // it to the list of collectors.
-func NewCephExporter(conn *rados.Conn, hostType string) *CephExporter {
+func NewCephExporter(conn *rados.Conn, cluster string, hostType string) *CephExporter {
 	var exporter *CephExporter
 	switch hostType {
 	case "ceph":
@@ -124,7 +124,7 @@ func main() {
 			defer conn.Shutdown()
 
 			log.Printf("Starting ceph exporter for cluster: %s", cluster.ClusterLabel)
-			err = prometheus.Register(NewCephExporter(conn, cluster.ClusterLabel))
+			err = prometheus.Register(NewCephExporter(conn, cluster.ClusterLabel, hostType))
 			if err != nil {
 				log.Fatalf("cannot export cluster: %s error: %v", cluster.ClusterLabel, err)
 			}
@@ -149,7 +149,7 @@ func main() {
 		}
 		defer conn.Shutdown()
 
-		prometheus.MustRegister(NewCephExporter(conn, "ceph"))
+		prometheus.MustRegister(NewCephExporter(conn, "ceph", hostType))
 	}
 
 	http.Handle(*metricsPath, prometheus.Handler())
