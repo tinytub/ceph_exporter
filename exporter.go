@@ -124,7 +124,7 @@ func main() {
 			defer conn.Shutdown()
 
 			log.Printf("Starting ceph exporter for cluster: %s", cluster.ClusterLabel)
-			err = prometheus.Register(NewCephExporter(conn, cluster.ClusterLabel, hostType))
+			err = prometheus.Register(NewCephExporter(conn, cluster.ClusterLabel, *hostType))
 			if err != nil {
 				log.Fatalf("cannot export cluster: %s error: %v", cluster.ClusterLabel, err)
 			}
@@ -149,7 +149,7 @@ func main() {
 		}
 		defer conn.Shutdown()
 
-		prometheus.MustRegister(NewCephExporter(conn, "ceph", hostType))
+		prometheus.MustRegister(NewCephExporter(conn, "ceph", *hostType))
 	}
 
 	http.Handle(*metricsPath, prometheus.Handler())
